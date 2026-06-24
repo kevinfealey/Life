@@ -33,5 +33,5 @@ export function resourcePressureCost(stage, speed) {
 }
 
 export function guardrailDamageReduction(meters) {
-  return 0.25 + meters.guardrails / 160;
+  return Math.max(0.34, 1 - meters.guardrails / 135);
 }

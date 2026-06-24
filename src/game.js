@@ -59,11 +59,15 @@ export class GuardrailsGame {
     this.children = [];
     this.pendingKids = [];
     this.floaters = [];
+    this.wasOffRoad = false;
+    this.lastOffRoadNoticeAt = 0;
+    this.familyMilestoneTriggered = false;
     this.nextObjectiveAt = 320;
     this.nextInfluenceAt = 240;
     this.nextEventAt = 900;
     this.nextUnexpectedKidAt = 6200;
-    this.stage = getStage(this.age);
+    this.stageIndex = 0;
+    this.stage = STAGES[this.stageIndex] ?? getStage(this.age);
     this.stageSeen = new Set([this.stage.id]);
     this.pushMessage("Childhood: dependence. Parents help, but imperfectly.");
   }
@@ -142,7 +146,12 @@ export class GuardrailsGame {
 
   update(dt) {
     this.age = Math.min(80, this.worldY / 145);
-    this.stage = getStage(this.age);
+    const computedStage = getStage(this.age);
+    const computedIndex = STAGES.findIndex((stage) => stage.id === computedStage.id);
+    if (computedIndex > this.stageIndex && computedIndex <= this.stageIndex + 1) {
+      this.stageIndex = computedIndex;
+    }
+    this.stage = STAGES[this.stageIndex] ?? computedStage;
     if (!this.stageSeen.has(this.stage.id)) {
       this.stageSeen.add(this.stage.id);
       this.pushMessage(`${this.stage.name}: ${this.stage.lesson}.`);
@@ -179,11 +188,23 @@ export class GuardrailsGame {
     const offRoad = Math.abs(this.player.x - road.center) > road.width * 0.5;
     const objectiveHit = this.checkObjectiveHits();
     const damageReduction = guardrailDamageReduction(this.meters);
+    const offRoadDepth = offRoad ? Math.min(1.8, Math.abs(this.player.x - road.center) / (road.width * 0.5) - 1) : 0;
+    if (offRoad) {
+      this.speed = Math.max(0.48, this.speed - (0.08 + offRoadDepth * 0.08) * dt);
+      const now = performance.now();
+      if (!this.wasOffRoad || now - this.lastOffRoadNoticeAt > 1800) {
+        this.lastOffRoadNoticeAt = now;
+        this.addFloater("OFF ROAD: -stability -resources", this.player.x, this.height * 0.58, COLORS.warning);
+        this.pushMessage("Off road: stability and resources drain until you recover.");
+      }
+    }
+    this.wasOffRoad = offRoad;
+
     applyMeterDelta(this.meters, {
-      stability: offRoad ? -0.12 * this.stage.risk * damageReduction * dt * 60 : 0.035 * dt * 60,
-      resources: -resourcePressureCost(this.stage, this.speed) * dt * 60,
-      freedom: (this.stage.freedom - this.meters.freedom) * 0.003 * dt * 60,
-      purpose: calculatePurposeGain({ onRoad: !offRoad, objectiveHit, childCount: this.children.length, stage: this.stage }) * dt * 60
+      stability: offRoad ? -(0.24 + offRoadDepth * 0.2) * this.stage.risk * damageReduction * dt * 60 : 0.035 * dt * 60,
+      resources: (-resourcePressureCost(this.stage, this.speed) - (offRoad ? 0.025 * this.stage.risk * damageReduction : 0)) * dt * 60,
+      purpose: offRoad ? -0.04 * dt * 60 : calculatePurposeGain({ onRoad: true, objectiveHit, childCount: this.children.length, stage: this.stage }) * dt * 60,
+      freedom: (this.stage.freedom - this.meters.freedom) * 0.003 * dt * 60
     });
 
     this.spawnObjects();
@@ -209,6 +230,11 @@ export class GuardrailsGame {
       applyMeterDelta(this.meters, applyEventMitigation(event, this.meters));
       this.pushMessage(event.message);
       this.nextEventAt += 1050 / this.stage.eventRate + Math.random() * 650;
+    }
+    if (!this.familyMilestoneTriggered && this.age >= 23 && this.children.length === 0 && this.pendingKids.length === 0) {
+      this.familyMilestoneTriggered = true;
+      this.addKid(true);
+      this.pushMessage("A family responsibility is now on the horizon.");
     }
     if (this.worldY > this.nextUnexpectedKidAt && ["young-adult", "adult-pressure", "parenthood"].includes(this.stage.id)) {
       this.addKid(true);
@@ -359,6 +385,7 @@ export class GuardrailsGame {
     this.drawTerrain(ctx);
     this.drawRoad(ctx);
     this.drawObjects(ctx);
+    this.drawParentGuides(ctx);
     this.drawChildren(ctx);
     this.drawPlayer(ctx);
     this.drawFloaters(ctx);
@@ -573,54 +600,129 @@ export class GuardrailsGame {
 
   drawPlayer(ctx) {
     const y = this.height * 0.68;
-    ctx.fillStyle = COLORS.playerEdge;
-    ctx.beginPath();
-    ctx.arc(this.player.x, y, 31, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = COLORS.player;
-    ctx.beginPath();
-    ctx.arc(this.player.x, y, 24, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#1f2329";
-    ctx.font = `${Math.max(18, this.width * 0.022)}px system-ui`;
-    ctx.textAlign = "center";
-    ctx.fillText("you", this.player.x, y + 5);
-
     const road = this.getRoad(this.worldY);
-    if (this.stage.parentGuardrail > 0.05) {
-      ctx.strokeStyle = COLORS.parent;
-      ctx.lineWidth = 3 + this.stage.parentGuardrail * 7;
-      ctx.globalAlpha = 0.5;
+    const offRoad = Math.abs(this.player.x - road.center) > road.width * 0.5;
+    const radius = Math.max(23, this.width * 0.045);
+
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(this.player.x + radius * 0.2, y + radius * 0.82, radius * 0.95, radius * 0.34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const sphere = ctx.createRadialGradient(
+      this.player.x - radius * 0.35,
+      y - radius * 0.45,
+      radius * 0.12,
+      this.player.x,
+      y,
+      radius * 1.2
+    );
+    sphere.addColorStop(0, "#ffffff");
+    sphere.addColorStop(0.22, "#dff7ff");
+    sphere.addColorStop(0.58, offRoad ? "#ff9f7f" : "#5db7ff");
+    sphere.addColorStop(1, offRoad ? "#8e2f2f" : "#173a66");
+    ctx.fillStyle = sphere;
+    ctx.beginPath();
+    ctx.arc(this.player.x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = offRoad ? "#ffd2c2" : "#e8f7ff";
+    ctx.lineWidth = Math.max(3, radius * 0.12);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    ctx.beginPath();
+    ctx.arc(this.player.x - radius * 0.33, y - radius * 0.36, radius * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#f7fbff";
+    ctx.font = `800 ${Math.max(12, radius * 0.48)}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("YOU", this.player.x, y + radius * 1.55);
+  }
+
+  drawParentGuides(ctx) {
+    if (this.stage.parentGuardrail <= 0.04) return;
+    const y = this.height * 0.68;
+    const road = this.getRoad(this.worldY);
+    const pull = this.stage.parentGuardrail;
+    const parentY = y + 78;
+    const spread = road.width * 0.28;
+    const parents = [road.center - spread, road.center + spread];
+
+    for (const [index, x] of parents.entries()) {
+      ctx.globalAlpha = 0.2 + pull * 0.28;
+      ctx.strokeStyle = index === 0 ? "#9fd3ff" : "#c6d7ff";
+      ctx.lineWidth = 3 + pull * 5;
       ctx.beginPath();
-      ctx.moveTo(road.center, y + 72);
-      ctx.lineTo(this.player.x, y + 12);
+      ctx.moveTo(x, parentY);
+      ctx.quadraticCurveTo(road.center, y + 58, this.player.x, y + 8);
       ctx.stroke();
-      ctx.globalAlpha = 1;
+
+      ctx.globalAlpha = 0.92;
+      const r = 17 + pull * 8;
+      const parentGradient = ctx.createRadialGradient(x - r * 0.25, parentY - r * 0.3, 2, x, parentY, r);
+      parentGradient.addColorStop(0, "#ffffff");
+      parentGradient.addColorStop(0.42, index === 0 ? "#6fb5ff" : "#93a8ff");
+      parentGradient.addColorStop(1, "#27395f");
+      ctx.fillStyle = parentGradient;
+      ctx.beginPath();
+      ctx.arc(x, parentY, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `800 ${Math.max(10, r * 0.55)}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("P", x, parentY + 1);
     }
+    ctx.globalAlpha = 1;
   }
 
   drawChildren(ctx) {
     for (const child of this.children) {
       const y = this.height * 0.68 + child.yOffset;
-      if (y > this.height + 48) continue;
-      ctx.strokeStyle = `rgba(159, 211, 199, ${0.7 - child.independence * 0.35})`;
+      if (y > this.height - 8 || y < 0) continue;
+      const r = Math.max(15, this.width * 0.032);
+      const linkAlpha = 0.64 - child.independence * 0.32;
+      ctx.strokeStyle = `rgba(159, 211, 199, ${linkAlpha})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(this.player.x, this.height * 0.68 + 24);
-      ctx.lineTo(child.x, y - 20);
+      ctx.moveTo(this.player.x, this.height * 0.68 + 22);
+      ctx.lineTo(child.x, y - r);
       ctx.stroke();
-      ctx.fillStyle = child.independence > 0.68 ? "#f0c36d" : COLORS.child;
+
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#000";
       ctx.beginPath();
-      ctx.arc(child.x, y, 22, 0, Math.PI * 2);
+      ctx.ellipse(child.x + r * 0.16, y + r * 0.75, r * 0.86, r * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#14201d";
-      ctx.font = `${Math.max(17, this.width * 0.021)}px system-ui`;
+      ctx.globalAlpha = 1;
+
+      const grad = ctx.createRadialGradient(child.x - r * 0.3, y - r * 0.35, 2, child.x, y, r * 1.15);
+      grad.addColorStop(0, "#ffffff");
+      grad.addColorStop(0.35, child.independence > 0.68 ? "#ffe3a3" : "#b9fff0");
+      grad.addColorStop(1, child.independence > 0.68 ? "#bd7f22" : "#26766c");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(child.x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = child.stability > 45 ? "#eafff9" : COLORS.warning;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.fillStyle = "#f7fbff";
+      ctx.font = `800 ${Math.max(10, r * 0.55)}px system-ui`;
       ctx.textAlign = "center";
-      ctx.fillText(child.name, child.x, y + 5);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(child.x - 24, y + 31, 48, 5);
+      ctx.textBaseline = "middle";
+      ctx.fillText(child.name.slice(0, 1), child.x, y + 1);
+
+      ctx.fillStyle = "rgba(255,255,255,0.78)";
+      ctx.fillRect(child.x - 22, y + r + 8, 44, 5);
       ctx.fillStyle = child.stability > 45 ? "#70b77e" : COLORS.warning;
-      ctx.fillRect(child.x - 24, y + 31, 48 * (child.stability / 100), 5);
+      ctx.fillRect(child.x - 22, y + r + 8, 44 * (child.stability / 100), 5);
     }
   }
 

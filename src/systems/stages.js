@@ -59,7 +59,7 @@ export const STAGES = [
     id: "adult-pressure",
     name: "Adult Pressure",
     startAge: 30,
-    endAge: 45,
+    endAge: 38,
     control: 0.95,
     parentGuardrail: 0.05,
     freedom: 70,
@@ -72,8 +72,8 @@ export const STAGES = [
   {
     id: "parenthood",
     name: "Parenthood",
-    startAge: 45,
-    endAge: 62,
+    startAge: 38,
+    endAge: 58,
     control: 0.92,
     parentGuardrail: 0.02,
     freedom: 58,
@@ -86,7 +86,7 @@ export const STAGES = [
   {
     id: "later-life",
     name: "Later Life",
-    startAge: 62,
+    startAge: 58,
     endAge: 80,
     control: 0.78,
     parentGuardrail: 0,
@@ -100,6 +100,7 @@ export const STAGES = [
 ];
 
 export function getStage(age) {
+  if (!Number.isFinite(age)) return STAGES[0];
   return STAGES.find((stage) => age >= stage.startAge && age < stage.endAge) ?? STAGES[STAGES.length - 1];
 }
 

@@ -5,7 +5,7 @@ const CHILD_NAMES = ["Ari", "Mika", "Sol", "Noa", "Remy", "Jules"];
 export function createPendingKid(worldY, random = Math.random, unexpected = false) {
   return {
     id: `pending-${worldY}-${Math.floor(random() * 10000)}`,
-    dueAt: worldY + 900 + random() * 800,
+    dueAt: worldY + 220 + random() * 180,
     unexpected,
     notified: false
   };
@@ -16,7 +16,7 @@ export function createChild(index, roadCenter, worldY, random = Math.random) {
     id: `child-${index}-${worldY}`,
     name: CHILD_NAMES[index % CHILD_NAMES.length],
     x: roadCenter + (random() - 0.5) * 120,
-    yOffset: 220 + index * 90,
+    yOffset: 76 + index * 56,
     velocity: (random() - 0.5) * 0.35,
     age: 0,
     stability: 82,
@@ -27,7 +27,7 @@ export function createChild(index, roadCenter, worldY, random = Math.random) {
 }
 
 export function updateChild(child, parent, stage, roadCenter, roadWidth, inputInfluence, dt) {
-  child.age += dt * 0.34;
+  child.age += dt * 0.72;
   child.independence = clamp(child.age / 19, 0.08, 1);
 
   const parentPull = Math.sign(parent.x - child.x) * (1 - child.independence) * 0.16;
@@ -40,7 +40,7 @@ export function updateChild(child, parent, stage, roadCenter, roadWidth, inputIn
   const distance = Math.abs(child.x - roadCenter);
   const offRoad = distance > roadWidth * 0.48;
   const conflict = Math.abs(parent.x - child.x) > roadWidth * 0.42 && child.independence > 0.45;
-  child.stability = clamp(child.stability + (offRoad ? -0.08 : 0.025) * dt * 60 + (conflict ? -0.018 : 0));
+  child.stability = clamp(child.stability + (offRoad ? -0.16 : 0.03) * dt * 60 + (conflict ? -0.03 : 0));
   child.leaving = child.age > 19;
 
   return { offRoad, conflict };
