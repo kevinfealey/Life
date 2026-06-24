@@ -58,12 +58,12 @@ const EVENTS = [
 ];
 
 const OBJECTIVES = [
-  { label: "learn", delta: { purpose: 4, stability: 2 }, risk: 0.15 },
-  { label: "connect", delta: { purpose: 5, freedom: -1 }, risk: 0.1 },
-  { label: "save", delta: { resources: 9, freedom: -3, guardrails: 2 }, risk: 0.08 },
-  { label: "rest", delta: { stability: 8, resources: -2 }, risk: 0.06 },
-  { label: "stretch", delta: { purpose: 8, freedom: 6, stability: -3 }, risk: 0.42 },
-  { label: "show up", delta: { purpose: 6, resources: -3, stability: 3 }, risk: 0.12 }
+  { label: "Learn", icon: "?", summary: "+purpose +stability", color: "#7cc6e8", delta: { purpose: 4, stability: 2 }, risk: 0.15 },
+  { label: "Connect", icon: "@", summary: "+purpose -freedom", color: "#9fd3c7", delta: { purpose: 5, freedom: -1 }, risk: 0.1 },
+  { label: "Save", icon: "$", summary: "+resources +guardrails", color: "#70b77e", delta: { resources: 9, freedom: -3, guardrails: 2 }, risk: 0.08 },
+  { label: "Rest", icon: "Z", summary: "+stability", color: "#d9c6ff", delta: { stability: 8, resources: -2 }, risk: 0.06 },
+  { label: "Stretch", icon: "^", summary: "+purpose +freedom risk", color: "#f2a65a", delta: { purpose: 8, freedom: 6, stability: -3 }, risk: 0.42 },
+  { label: "Show Up", icon: "*", summary: "+purpose +stability", color: "#f2d264", delta: { purpose: 6, resources: -3, stability: 3 }, risk: 0.12 }
 ];
 
 export function createEvent(stage, random = Math.random) {
@@ -75,14 +75,15 @@ export function createObjective(stage, roadCenter, worldY, random = Math.random)
   const objective = OBJECTIVES[Math.floor(random() * OBJECTIVES.length)];
   const temptation = stage.id === "teen-years" || stage.id === "young-adult";
   const outside = temptation && random() < 0.4;
-  const offset = outside ? (random() > 0.5 ? 1 : -1) * (190 + random() * 85) : (random() - 0.5) * 190;
+  const offset = outside ? (random() > 0.5 ? 1 : -1) * (170 + random() * 70) : (random() - 0.5) * 165;
   return {
     id: `objective-${worldY}-${Math.floor(random() * 10000)}`,
     ...objective,
     x: roadCenter + offset,
     y: worldY,
     outside,
-    collected: false
+    collected: false,
+    pulse: 0
   };
 }
 
