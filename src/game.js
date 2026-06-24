@@ -159,11 +159,15 @@ export class GuardrailsGame {
 
     const road = this.getRoad(this.worldY);
     const steer = (this.input.right ? 1 : 0) - (this.input.left ? 1 : 0);
-    const speedIntent = (this.input.fast ? 0.58 : 0) - (this.input.slow ? 0.44 : 0);
+    const childLoad = Math.min(0.58, this.children.length * 0.18 + this.pendingKids.length * 0.08);
+    const parentConstraint = Math.min(0.72, this.stage.parentGuardrail * 0.68);
+    const controlAvailability = Math.max(0.16, 1 - parentConstraint - childLoad);
+    const speedIntent = ((this.input.fast ? 0.58 : 0) - (this.input.slow ? 0.44 : 0)) * Math.max(0.38, 1 - childLoad * 0.75);
     this.speed = clamp(this.speed + speedIntent * dt, 0.62, 2.1);
 
-    const parentCorrection = Math.sign(road.center - this.player.x) * this.stage.parentGuardrail * 0.34;
-    const playerControl = steer * this.stage.control * 18 * dt;
+    const distanceFromRoad = Math.min(1.8, Math.abs(this.player.x - road.center) / Math.max(1, road.width * 0.5));
+    const parentCorrection = Math.sign(road.center - this.player.x) * this.stage.parentGuardrail * (0.62 + distanceFromRoad * 0.22);
+    const playerControl = steer * this.stage.control * controlAvailability * 18 * dt;
     let influenceForce = 0;
     for (const influence of this.influences) {
       const screenY = this.screenY(influence.y);
@@ -514,87 +518,140 @@ export class GuardrailsGame {
     for (const objective of this.objects) {
       const y = this.screenY(objective.y);
       if (y < -90 || y > this.height + 90) continue;
-      const radius = Math.max(28, this.width * 0.045);
-      const cardW = Math.max(116, this.width * 0.24);
-      const cardH = Math.max(58, this.height * 0.06);
-      const cardX = objective.x - cardW / 2;
-      const cardY = y - cardH / 2;
+      const risky = objective.outside || objective.risk > 0.32 || (objective.delta?.stability ?? 0) < 0;
+      const radius = Math.max(26, this.width * 0.042);
+      const pulse = 1 + Math.sin((this.worldY + objective.y) * 0.025) * 0.08;
+      const x = objective.x;
 
-      ctx.globalAlpha = objective.outside ? 0.98 : 0.94;
-      ctx.fillStyle = objective.outside ? "rgba(214, 95, 95, 0.92)" : "rgba(244, 241, 232, 0.95)";
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(risky ? Math.PI / 4 : 0);
+
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = risky ? "#ff6e5e" : objective.color;
       ctx.beginPath();
-      this.roundRectPath(ctx, cardX, cardY, cardW, cardH, 10);
+      ctx.arc(0, 0, radius * 2.25 * pulse, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.fillStyle = objective.color;
+      const gradient = ctx.createRadialGradient(-radius * 0.35, -radius * 0.45, 2, 0, 0, radius * 1.25);
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(0.38, objective.color);
+      gradient.addColorStop(1, risky ? "#7c2028" : "#1f4d45");
+      ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.arc(cardX + radius, y, radius * 0.72, 0, Math.PI * 2);
+      if (risky) {
+        for (let i = 0; i < 8; i += 1) {
+          const a = (Math.PI * 2 * i) / 8;
+          const r = i % 2 ? radius * 0.72 : radius * 1.16;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+      } else {
+        ctx.moveTo(0, -radius * 1.18);
+        ctx.lineTo(radius * 1.18, 0);
+        ctx.lineTo(0, radius * 1.18);
+        ctx.lineTo(-radius * 1.18, 0);
+      }
+      ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = "#11151a";
-      ctx.font = `700 ${Math.max(18, this.width * 0.026)}px system-ui`;
+
+      ctx.strokeStyle = risky ? "#ffd2c7" : "#eafff9";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = "rgba(10, 14, 18, 0.72)";
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `900 ${Math.max(16, radius * 0.75)}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(objective.icon, cardX + radius, y + 1);
+      ctx.fillText(objective.icon, x, y + 1);
 
-      ctx.fillStyle = objective.outside ? "#fff7f2" : "#11151a";
-      ctx.font = `800 ${Math.max(15, this.width * 0.023)}px system-ui`;
-      ctx.textAlign = "left";
-      ctx.fillText(objective.label, cardX + radius * 1.75, y - 10);
-      ctx.font = `${Math.max(11, this.width * 0.017)}px system-ui`;
-      ctx.fillText(objective.summary, cardX + radius * 1.75, y + 12);
-
-      if (objective.outside) {
-        ctx.strokeStyle = "#ffd7d0";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(objective.x, y, cardW * 0.58, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      this.drawEffectPips(ctx, x, y + radius * 1.55, objective.delta ?? {}, risky);
     }
 
     for (const influence of this.influences) {
       const y = this.screenY(influence.y);
       if (y < -90 || y > this.height + 90) continue;
       const active = y > this.height * 0.22 && y < this.height * 0.78;
+      const negative = influence.force < 0 || (influence.effect?.stability ?? 0) < 0;
       const size = active ? 34 : 29;
       const road = this.getRoad(influence.y);
-      const arrowEnd = influence.force >= 0 ? road.center : influence.x + influence.side * 68;
+      const arrowEnd = influence.force >= 0 ? road.center : influence.x + influence.side * 78;
 
-      ctx.globalAlpha = active ? 0.22 : 0.12;
-      ctx.fillStyle = influence.color;
+      ctx.globalAlpha = active ? 0.2 : 0.11;
+      ctx.fillStyle = negative ? "#ff6e5e" : influence.color;
       ctx.beginPath();
-      ctx.arc(influence.x, y, size * 1.55, 0, Math.PI * 2);
+      ctx.ellipse(influence.x, y, size * 1.95, size * 1.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.strokeStyle = influence.force >= 0 ? "#dbe9ff" : "#ffd2d2";
+      ctx.strokeStyle = negative ? "#ffd2d2" : "#dbe9ff";
       ctx.lineWidth = active ? 5 : 3;
       ctx.beginPath();
       ctx.moveTo(influence.x, y);
       ctx.lineTo(arrowEnd, y);
       ctx.stroke();
-      this.drawArrowHead(ctx, influence.x, y, arrowEnd, y, influence.force >= 0 ? "#dbe9ff" : "#ffd2d2");
+      this.drawArrowHead(ctx, influence.x, y, arrowEnd, y, negative ? "#ffd2d2" : "#dbe9ff");
 
-      ctx.fillStyle = influence.color;
+      ctx.save();
+      ctx.translate(influence.x, y);
+      ctx.rotate(negative ? Math.PI / 4 : 0);
+      const field = ctx.createRadialGradient(-size * 0.25, -size * 0.35, 2, 0, 0, size);
+      field.addColorStop(0, "#ffffff");
+      field.addColorStop(0.45, influence.color);
+      field.addColorStop(1, negative ? "#7c2028" : "#1e4668");
+      ctx.fillStyle = field;
       ctx.beginPath();
-      ctx.arc(influence.x, y, size, 0, Math.PI * 2);
+      if (negative) {
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size, 0);
+      } else {
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+      }
+      ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = negative ? "#ffd2d2" : "#e8f7ff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+
       ctx.fillStyle = "#fff";
-      ctx.font = `800 ${Math.max(18, this.width * 0.026)}px system-ui`;
+      ctx.font = `900 ${Math.max(17, size * 0.72)}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(influence.icon, influence.x, y + 1);
+      this.drawEffectPips(ctx, influence.x, y + size * 1.45, influence.effect ?? {}, negative);
+    }
+  }
 
-      ctx.fillStyle = "rgba(13, 18, 22, 0.82)";
+  drawEffectPips(ctx, x, y, delta, risky = false) {
+    const positive = Object.values(delta).some((value) => value > 0);
+    const negative = Object.values(delta).some((value) => value < 0);
+    const marks = [];
+    if (positive) marks.push({ text: "+", color: risky ? "#ffd36f" : "#9ff0b2" });
+    if (negative) marks.push({ text: "−", color: "#ff9f8f" });
+    if (!marks.length) return;
+    const spacing = 18;
+    const start = x - ((marks.length - 1) * spacing) / 2;
+    for (const [index, mark] of marks.entries()) {
+      const px = start + index * spacing;
+      ctx.fillStyle = "rgba(10, 14, 18, 0.78)";
       ctx.beginPath();
-      this.roundRectPath(ctx, influence.x - 52, y + size + 7, 104, 34, 8);
+      ctx.arc(px, y, 8, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#f4f1e8";
-      ctx.font = `700 ${Math.max(11, this.width * 0.017)}px system-ui`;
-      ctx.fillText(influence.label, influence.x, y + size + 19);
-      ctx.font = `${Math.max(10, this.width * 0.015)}px system-ui`;
-      ctx.fillText(influence.effectLabel, influence.x, y + size + 31);
+      ctx.fillStyle = mark.color;
+      ctx.font = "900 13px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(mark.text, px, y - 1);
     }
   }
 
