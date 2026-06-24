@@ -1,0 +1,7 @@
+name = "life"
+account_id = "fcd0b3e9b53c9e03f7cb54dc31094241"
+compatibility_date = "2026-06-24"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
