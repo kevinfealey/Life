@@ -38,6 +38,9 @@ export class GuardrailsGame {
     this.startedAt = performance.now();
     this.lastTime = performance.now();
     this.messages = [];
+    this.lastUiRenderAt = 0;
+    this.lastMetersHtml = "";
+    this.lastStageLine = "";
     this.reset();
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -131,7 +134,7 @@ export class GuardrailsGame {
     this.speed = clamp(this.speed + speedIntent * dt, 0.62, 2.1);
 
     const parentCorrection = Math.sign(road.center - this.player.x) * this.stage.parentGuardrail * 0.34;
-    const playerControl = steer * this.stage.control * 0.82;
+    const playerControl = steer * this.stage.control * 18 * dt;
     let influenceForce = 0;
     for (const influence of this.influences) {
       const screenY = this.screenY(influence.y);
@@ -142,7 +145,7 @@ export class GuardrailsGame {
     }
 
     this.player.vx += playerControl + parentCorrection * dt + influenceForce;
-    this.player.vx *= 0.9;
+    this.player.vx *= Math.pow(0.88, dt * 60);
     this.player.x += this.player.vx * dt * 220;
     this.player.x = clamp(this.player.x, 35, this.width - 35);
     this.worldY += this.speed * dt * 185;
@@ -240,9 +243,18 @@ export class GuardrailsGame {
     this.influences = this.influences.filter((object) => object.y > cutoff);
   }
 
-  updateUi() {
+  updateUi(force = false) {
+    const now = performance.now();
+    if (!force && now - this.lastUiRenderAt < 120) return;
+    this.lastUiRenderAt = now;
+
     const progress = getStageProgress(this.age, this.stage);
-    this.ui.stageLine.textContent = `${this.stage.name} · age ${Math.floor(this.age)} · ${Math.round(progress * 100)}%`;
+    const stageLine = `${this.stage.name} · age ${Math.floor(this.age)} · ${Math.round(progress * 100)}%`;
+    if (stageLine !== this.lastStageLine) {
+      this.ui.stageLine.textContent = stageLine;
+      this.lastStageLine = stageLine;
+    }
+
     const meters = [
       ["Stability", this.meters.stability],
       ["Resources", this.meters.resources],
@@ -251,17 +263,24 @@ export class GuardrailsGame {
       ["Guardrails", this.meters.guardrails]
     ];
     if (this.children.length) meters.push(["Kids", this.meters.childStability]);
-    this.ui.meters.innerHTML = meters
-      .map(
-        ([label, value]) => `
+
+    const metersHtml = meters
+      .map(([label, value]) => {
+        const rounded = Math.round(value);
+        return `
           <div class="meter">
             <span>${label}</span>
-            <strong>${Math.round(value)}</strong>
-            <i style="--value: ${Math.round(value)}%"></i>
+            <strong>${rounded}</strong>
+            <i style="--value: ${rounded}%"></i>
           </div>
-        `
-      )
+        `;
+      })
       .join("");
+    if (metersHtml !== this.lastMetersHtml) {
+      this.ui.meters.innerHTML = metersHtml;
+      this.lastMetersHtml = metersHtml;
+    }
+
     this.ui.kidButton.disabled = !["young-adult", "adult-pressure", "parenthood"].includes(this.stage.id);
     this.ui.guardrailButton.disabled = this.meters.resources < 12;
   }
@@ -363,13 +382,31 @@ export class GuardrailsGame {
     ctx.stroke();
   }
 
+  roundRectPath(ctx, x, y, width, height, radius) {
+    if (typeof ctx.roundRect === "function") {
+      ctx.roundRect(x, y, width, height, radius);
+      return;
+    }
+
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+  }
+
   drawObjects(ctx) {
     for (const objective of this.objects) {
       const y = this.screenY(objective.y);
       if (y < -80 || y > this.height + 80) continue;
       ctx.fillStyle = objective.outside ? COLORS.warning : COLORS.resource;
       ctx.beginPath();
-      ctx.roundRect(objective.x - 42, y - 24, 84, 48, 12);
+      this.roundRectPath(ctx, objective.x - 42, y - 24, 84, 48, 12);
       ctx.fill();
       ctx.fillStyle = "#11151a";
       ctx.font = `${Math.max(20, this.width * 0.025)}px system-ui`;
@@ -456,7 +493,7 @@ export class GuardrailsGame {
     const y = 22;
     ctx.fillStyle = "rgba(13, 18, 22, 0.68)";
     ctx.beginPath();
-    ctx.roundRect(x, y, barWidth, 42, 12);
+    this.roundRectPath(ctx, x, y, barWidth, 42, 12);
     ctx.fill();
     STAGES.forEach((stage, index) => {
       const w = barWidth / STAGES.length;

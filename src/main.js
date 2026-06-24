@@ -10,19 +10,34 @@ const game = new GuardrailsGame(canvas, {
   pauseButton: document.querySelector("#pauseButton")
 });
 
+const holdOptions = { passive: false };
+
 const bindHold = (button, input) => {
   const on = (event) => {
     event.preventDefault();
+    if (button.setPointerCapture) {
+      try {
+        button.setPointerCapture(event.pointerId);
+      } catch {
+        // Some mobile browsers reject capture during synthetic pointer events.
+      }
+    }
     game.setInput(input, true);
   };
   const off = (event) => {
     event.preventDefault();
+    if (button.releasePointerCapture) {
+      try {
+        button.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore double-release after pointer cancellation.
+      }
+    }
     game.setInput(input, false);
   };
-  button.addEventListener("pointerdown", on);
-  button.addEventListener("pointerup", off);
-  button.addEventListener("pointercancel", off);
-  button.addEventListener("pointerleave", off);
+  button.addEventListener("pointerdown", on, holdOptions);
+  button.addEventListener("pointerup", off, holdOptions);
+  button.addEventListener("pointercancel", off, holdOptions);
 };
 
 bindHold(document.querySelector("#leftButton"), "left");
@@ -51,12 +66,12 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     game.setInput(input, true);
   }
-  if (event.key === " " || event.key === "p") {
+  if ((event.key === " " || event.key === "p") && !event.repeat) {
     event.preventDefault();
     game.togglePause();
   }
-  if (event.key === "g") game.buildGuardrail();
-  if (event.key === "k") game.addKid();
+  if (event.key === "g" && !event.repeat) game.buildGuardrail();
+  if (event.key === "k" && !event.repeat) game.addKid();
 });
 
 window.addEventListener("keyup", (event) => {
@@ -67,5 +82,5 @@ window.addEventListener("keyup", (event) => {
   }
 });
 
-game.updateUi();
+game.updateUi(true);
 game.loop();
