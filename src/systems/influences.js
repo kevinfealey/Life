@@ -64,7 +64,8 @@ export function createInfluence(stage, roadCenter, worldY, random = Math.random)
     : teenStage
       ? ["parent", "friend", "bad-influence", "mentor"]
       : ["friend", "bad-influence", "mentor"];
-  const type = INFLUENCE_TYPES.find((item) => item.id === pool[Math.floor(random() * pool.length)]);
+  const typeId = pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))] ?? "friend";
+  const type = INFLUENCE_TYPES.find((item) => item.id === typeId) ?? INFLUENCE_TYPES.find((item) => item.id === "friend");
   const side = random() > 0.5 ? 1 : -1;
   return {
     ...type,

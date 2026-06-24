@@ -39,6 +39,7 @@ export class GuardrailsGame {
     this.startedAt = performance.now();
     this.lastTime = performance.now();
     this.messages = [];
+    this.lastLoopErrorAt = 0;
     this.lastUiRenderAt = 0;
     this.lastMetersHtml = "";
     this.lastStageLine = "";
@@ -125,8 +126,17 @@ export class GuardrailsGame {
   loop(time = performance.now()) {
     const dt = Math.min(0.033, (time - this.lastTime) / 1000 || 0);
     this.lastTime = time;
-    if (!this.paused) this.update(dt);
-    this.render();
+    try {
+      if (!this.paused) this.update(dt);
+      this.render();
+    } catch (error) {
+      console.error("Guardrails frame error", error);
+      const now = performance.now();
+      if (now - this.lastLoopErrorAt > 2500) {
+        this.lastLoopErrorAt = now;
+        this.pushMessage("A rough patch hit, but the road keeps moving.");
+      }
+    }
     requestAnimationFrame((nextTime) => this.loop(nextTime));
   }
 

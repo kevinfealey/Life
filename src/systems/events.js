@@ -68,11 +68,11 @@ const OBJECTIVES = [
 
 export function createEvent(stage, random = Math.random) {
   const options = EVENTS.filter((event) => event.stages.includes(stage.id));
-  return options[Math.floor(random() * options.length)] ?? EVENTS[0];
+  return options[Math.min(options.length - 1, Math.floor(random() * options.length))] ?? EVENTS[0];
 }
 
 export function createObjective(stage, roadCenter, worldY, random = Math.random) {
-  const objective = OBJECTIVES[Math.floor(random() * OBJECTIVES.length)];
+  const objective = OBJECTIVES[Math.min(OBJECTIVES.length - 1, Math.floor(random() * OBJECTIVES.length))] ?? OBJECTIVES[0];
   const temptation = stage.id === "teen-years" || stage.id === "young-adult";
   const outside = temptation && random() < 0.4;
   const offset = outside ? (random() > 0.5 ? 1 : -1) * (170 + random() * 70) : (random() - 0.5) * 165;
