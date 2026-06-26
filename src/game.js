@@ -249,10 +249,23 @@ export class GuardrailsGame {
   updateChildren(dt, road) {
     this.input.childInfluence = ((this.input.right ? 1 : 0) - (this.input.left ? 1 : 0)) * 0.7;
     let conflicts = 0;
+    const visibleObjects = this.objects.filter((object) => {
+      const y = this.screenY(object.y);
+      return y > -90 && y < this.height + 120 && !object.collected;
+    });
     for (const child of this.children) {
-      const childRoad = this.getRoad(this.worldY - child.yOffset);
-      const result = updateChild(child, this.player, this.stage, childRoad.center, childRoad.width, this.input.childInfluence, dt);
+      const childWorldY = this.worldY - child.yOffset;
+      const childRoad = this.getRoad(childWorldY);
+      const result = updateChild(child, this.player, this.stage, childRoad.center, childRoad.width, this.input.childInfluence, dt, {
+        visibleObjects,
+        siblings: this.children,
+        childWorldY
+      });
       if (result.conflict) conflicts += 1;
+      if (result.offRoad && this.worldY - child.offRoadNoticeAt > 260) {
+        child.offRoadNoticeAt = this.worldY;
+        this.addFloater("kid off-road", child.x, this.height * 0.68 + child.yOffset - 18, COLORS.warning);
+      }
       if (child.leaving) {
         this.pushMessage(`${child.name} leaves direct influence with ${Math.round(child.stability)} stability.`);
       }
@@ -751,6 +764,17 @@ export class GuardrailsGame {
       ctx.lineTo(child.x, y - r);
       ctx.stroke();
 
+      if (Number.isFinite(child.interestX)) {
+        ctx.strokeStyle = child.interestLabel === "risk" ? "rgba(255, 120, 100, 0.72)" : "rgba(159, 240, 178, 0.62)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.moveTo(child.x, y);
+        ctx.lineTo(child.interestX, y - 62);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       ctx.globalAlpha = 0.25;
       ctx.fillStyle = "#000";
       ctx.beginPath();
@@ -780,6 +804,10 @@ export class GuardrailsGame {
       ctx.fillRect(child.x - 22, y + r + 8, 44, 5);
       ctx.fillStyle = child.stability > 45 ? "#70b77e" : COLORS.warning;
       ctx.fillRect(child.x - 22, y + r + 8, 44 * (child.stability / 100), 5);
+
+      ctx.fillStyle = child.interestLabel === "risk" ? "#ff9f8f" : "#9ff0b2";
+      ctx.font = "900 12px system-ui";
+      ctx.fillText(child.interestLabel === "risk" ? "!" : "+", child.x + r + 10, y - r * 0.5);
     }
   }
 

@@ -10,6 +10,8 @@ const game = new GuardrailsGame(canvas, {
   pauseButton: document.querySelector("#pauseButton")
 });
 
+window.__guardrailsGame = game;
+
 const holdOptions = { passive: false };
 
 const bindHold = (button, input) => {
